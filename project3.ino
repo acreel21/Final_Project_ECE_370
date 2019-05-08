@@ -73,6 +73,7 @@ float deltaX = (L/2)*sin(phi);
 float deltaY = (L/2)-(L/2)*cos(phi);
 float xGlobal = 0;
 float yGlobal = 0;
+float zGlobal = 0.0;
 float phiGlobal = 0;
 float deltaXp = 0; 
 float deltaYp = 0;
@@ -155,26 +156,36 @@ void imuSetup(){
   Wire.begin();
   compass.init();
   compass.enableDefault();
-  compass.m_min = (LSM303::vector<int16_t>){-5635,  -4350,  -4262};
-  compass.m_max = (LSM303::vector<int16_t>){ +262,  +1577,  +1803};
+  compass.m_min = (LSM303::vector<int16_t>){-5754, -4079, -4267};
+  compass.m_max = (LSM303::vector<int16_t>){+357, +1948, +1990};
+  head = compass.heading((LSM303::vector<int>){1, 0, 0});
+  phiGlobal = head*(3.14/180);
 }
 
 void encoderR_ISR(){
+  //Serial.println("Im right");
   cntR++;
   phiGlobal += phi;
   deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
   deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
   xGlobal += deltaXp;
   yGlobal += deltaYp;
+  myData.odo[0]=xGlobal;
+  myData.odo[1]=yGlobal;
+  myData.odo[2]=zGlobal;
 }
 
 void encoderL_ISR(){
+  //Serial.println("Im left");
   cntL++;
   phiGlobal -= phi;
   deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
   deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
   xGlobal += deltaXp;
   yGlobal += deltaYp;
+  myData.odo[0]=xGlobal;
+  myData.odo[1]=yGlobal;
+  myData.odo[2]=zGlobal;
 }
 
 void checkImu(){
@@ -185,19 +196,7 @@ void checkImu(){
   mx = ((double)(compass.m.x)*0.16)/1000.0;
   my = ((double)(compass.m.y)*0.16)/1000.0;
   mz = ((double)(compass.m.z)*0.16)/1000.0;
-  head = compass.heading((LSM303::vector<int>){0, 0, 1});
-    if (head > 230 && head < 330){
-    head -= 30;
-  }
-  if (head > 130 && head < 230){
-    head -= 30;
-  }
-  if (head > 30 && head < 130){
-    head -= 10;
-  }
-  if(head > 180){
-    head -= 360;
-  }
+  head = compass.heading((LSM303::vector<int>){1, 0, 0});
   myData.imu[0]=ax;
   myData.imu[1]=ay;
   myData.imu[2]=az;
@@ -205,6 +204,19 @@ void checkImu(){
   myData.imu[4]=my;
   myData.imu[5]=mz;
   myData.heading=head;
+  if(head > 180){
+    head -= 360;
+  }
+  if (head >= -180 && head <= -169){
+    head = abs(head);
+    //Serial.println(head);
+  }
+  float ap = (((double)(compass.a.z)*0.061)/1000.0);
+  float Jz = (ap-azold);
+  if (Jz > 0.5){
+    pickup = 1;
+  //Serial.println("Pickup");
+  }
 }
 
 void checkUDP(){
@@ -213,20 +225,24 @@ int packetSize = UdpOne.parsePacket(); //parse packet for UDP
     // read the packet into recvBuffer
     int len = UdpOne.read(recvBuffer, BUFSZ); //read different packet from UDP packet
     if (len > 0) {
-      Serial.println("Contents:");
+      //Serial.println("Contents:");
       //Serial.println(recvBuffer);
       memcpy(&myRobot, recvBuffer, sizeof(myRobot));
       if (myRobot.Mode == 1){
+        Serial.println("Restart");
         pickup = 0;
-        phiGlobal = 0;
+        phiGlobal = head*(3.14/180);
         xGlobal = 0;
         yGlobal = 0;
         errorDir = 0;
         errorSpel = 0;
         errorSper = 0;
+        myData.odo[0]=xGlobal;
+        myData.odo[1]=yGlobal;
+        myData.odo[2]=zGlobal;
       }
-      Serial.println(myRobot.Velocity);
-      Serial.println(myRobot.Theta);
+      //Serial.println(myRobot.Velocity);
+      //Serial.println(myRobot.Theta);
       }
     else {
       Serial.println("Read 0 bytes.");
@@ -237,12 +253,12 @@ int packetSize = UdpOne.parsePacket(); //parse packet for UDP
     // read the packet into recvBuffer
     int len = UdpTwo.read(recvBuffer, BUFSZ); //read different packet from UDP packet
     if (len > 0) {
-      Serial.println("Contents:");
-      Serial.println(recvBuffer);
+      //Serial.println("Contents:");
+      //Serial.println(recvBuffer);
       memcpy(&myRobot2, recvBuffer, sizeof(myRobot2));
       if (myRobot2.Mode == 2) {
-        Serial.println("Mode 2");
-        UdpTwo.beginPacket(udpIP, udpPort);
+        //Serial.println("Mode 2");
+        UdpTwo.beginPacket(UdpTwo.remoteIP(), UdpTwo.remotePort());
         char txBuffer[1024] = { 0 };
         memcpy(txBuffer, &myData, sizeof(Data));
         UdpTwo.write(txBuffer, sizeof(Data));
@@ -259,6 +275,14 @@ int setMl(double v1){
   float(thetal) = (float(cntL)*(0.5))*kg; //gets speed
   errorSpel = v1 - thetal; //finds error
   vell = errorSpel*Kpspe; //finds velocity for the motors
+  //Serial.print("Desired Velocity is: ");
+  //Serial.println(v1);
+  //Serial.print("Theta is: ");
+  //Serial.println(thetal);
+  //Serial.print("errorSpeL is: ");
+  //Serial.println(errorSpel);
+  //Serial.print("Velocity in set M1 is: ");
+  //Serial.println(vell);
   cntL=0;
 }
 
@@ -267,17 +291,47 @@ int setMr(double v2){
   errorSper = v2 - thetar; //finds error
   velr = errorSper*Kpspe; //finds velocity for the motors
   cntR=0;
+  //Serial.print("Desired Velocity is: ");
+  //Serial.println(v2);
+  //Serial.print("Theta right is: ");
+  //Serial.println(thetar);
+  //Serial.print("errorSpe is: ");
+  //Serial.println(errorSper);
+  //Serial.print("Velocity right is: ");
+  //Serial.println(velr);
 }
 
 int setDir(double t){
-  phiDir = 0.1*(float)phiGlobal*(360/(2*3.14))+0.9*(int)head;
-  errorDir = phiDir - t; //finds error
+  phiDir =  (int)head;//0.1*(float)phiGlobal*(360/(2*3.14))+0.9*(int)head;
+  errorDir = t - phiDir; //finds error
   w = errorDir*Kpdir; //finds angluar speed
+  //Serial.print("The desired angluar speed:  ");
+  //Serial.println(t);
+  Serial.print("The heading:  ");
+  Serial.println(head);
+  //Serial.print("The phi:  ");
+  //Serial.println(phiDir);
+  //Serial.print("The phi Global:  ");
+  //Serial.println(phiGlobal);
+  //Serial.print("The error is:  ");
+  //Serial.println(errorDir);
+  //Serial.print("The angluar speed:  ");
+  //Serial.println(w);
 }
 
 void setMotor(){
   Mr = (((2*velr) + (w*L))/(2*r));  //motor speed right wheel
   Ml = (((2*vell) - (w*L))/(2*r)); //motor speed left wheel
+//  Serial.print("Velocity in set M1 is: ");
+//  Serial.println(vell);
+//  Serial.print("Velocity right is: ");
+//  Serial.println(velr);
+//  Serial.print("The angluar speed:  ");
+//  Serial.println(w);
+//  Serial.print("Right wheel :  ");
+//  Serial.println(Mr);
+//  Serial.print("Left wheel :  ");
+//  Serial.println(Ml);
   if (Ml > 255){
     Ml = 255;
   }

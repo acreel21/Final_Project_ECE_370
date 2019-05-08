@@ -30,9 +30,9 @@ def udpRead():
 	while True:
 		buff = sock2.recv(sizeof(Data))
 		myData = Data.from_buffer_copy(buff)
-		print "X=%d, Y=%d, phi=%d" % (myData.odo[0], myData.odo[1], myData.odo[2])
-		print "ax=%f, ay=%f, az=%f, mx=%d, my=%d, mz=%d" % (myData.imu[0], myData.imu[1], myData.imu[2], myData.imu[3], myData.imu[4], myData.imu[5])
-		print "Heading=%d" % (myData.heading)
+		print "X=%d mm, Y=%d mm, Z=%d mm" % (myData.odo[0], myData.odo[1], myData.odo[2])
+		print "ax=%f m/s^2, ay=%f m/s^2, az=%f m/s^2, mx=%d gauss, my=%d gauss, mz=%d gauss" % (myData.imu[0], myData.imu[1], myData.imu[2], myData.imu[3], myData.imu[4], myData.imu[5])
+		print "Heading=%d deg" % (myData.heading)
 	
 def udpSend():
 	while True:
@@ -74,16 +74,16 @@ while True:
 			v = 0
 		sendRobot = Robot(v,t,0) #parse data
 		sock.send(sendRobot) #send parse data
-	elif (a == keys.RIGHT): #RIGHT ARROW
+	elif (a == keys.LEFT): #LEFT ARROW
+		if (t == -180):
+			t = 180
 		t -= 15 
-		if (t < 0):
-			t += 360
 		sendRobot = Robot(v,t,0) #parse data
 		sock.send(sendRobot) #send parse data
 	elif (a == keys.LEFT): #LEFT ARROW
+		if (t == 180):
+			t = -180
 		t += 15 
-		if (t > 360):
-			t -= 360
 		sendRobot = Robot(v,t,0) #parse data
 		sock.send(sendRobot) #send parse data
 	elif (a == 'w'):
@@ -99,7 +99,7 @@ while True:
 		sendRobot = Robot(v,t,0) #parse data
 		sock.send(sendRobot) #send parse data
 	elif (a	== 'a'):
-		t = 270
+		t = -90
 		sendRobot = Robot(v,t,0) #parse data
 		sock.send(sendRobot) #send parse data
 	elif (a == 'r'): #restart check
